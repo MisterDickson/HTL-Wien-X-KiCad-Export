@@ -63,7 +63,8 @@ class HTLWienXFabricationExport(pcbnew.ActionPlugin):
                     line = drl.readline()
                     if not line:
                         break
-                    exc.write(line.replace('Y-', 'Y'))
+                    if 'G' not in line:
+                        exc.write(line.replace('Y-', 'Y'))
         
         # Write tool info to tool file
         with open(tool_file, 'w') as tool:
