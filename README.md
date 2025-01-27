@@ -4,6 +4,8 @@ Die Dateien ```HTLWienXFabricationExport.py``` und ```HTLWienX_24x24.png``` ins 
 # Anwendung
 Board-Datei öffnen.
 
+Nullpunkt setzen. 'Place' -> 'Drill/Place File Origin'.<br> Grundsätzlich in der linken unteren Ecke der Leiterplattenkontur. Bei einseitigen Platinen kann der Nullpunkt auch rechts unten positioniert werden um ein besseres Bohrergebnis zu erzielen. In diesem Fall muss aber die Kupferseite des Rohmaterials nach oben (zum Bohrkopf) zeigen.
+
 Etwaige Änderungen speichern.
 
 Den Button mit dem HTL-Logo in der Symbolleiste anklicken.
