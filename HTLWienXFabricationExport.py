@@ -1,6 +1,58 @@
 import pcbnew
 import os
 import subprocess
+import sys
+import shutil
+
+def find_kicad_cli():
+    """
+    Locates the kicad-cli executable in an OS-agnostic way.
+
+    Returns:
+        str: The absolute path to the kicad-cli executable, or None if not found.
+    """
+    # --- Check if kicad-cli is in the system's PATH ---
+    kicad_cli_path = shutil.which("kicad-cli")
+    if kicad_cli_path:
+        return kicad_cli_path
+
+    # --- If not in PATH, check default installation locations ---
+    
+    # Determine the executable name based on the OS
+    cli_executable_name = "kicad-cli.exe" if sys.platform == "win32" else "kicad-cli"
+
+    # Define platform-specific search paths
+    search_paths = []
+    if sys.platform == "darwin":  # macOS
+        search_paths.append('/usr/local/bin/kicad-cli')
+        search_paths.append(f"/Applications/KiCad.app/Contents/MacOS/{cli_executable_name}")
+        # Check for versioned app names, e.g., KiCad-7.0.app
+        for item in os.listdir("/Applications"):
+             if item.lower().startswith("kicad") and item.endswith(".app"):
+                  search_paths.append(f"/Applications/{item}/Contents/MacOS/{cli_executable_name}")
+
+    elif sys.platform == "win32":  # Windows
+        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+        # Check for KiCad directory, which often contains a versioned subfolder
+        kicad_base_dir = os.path.join(program_files, "KiCad")
+        if os.path.isdir(kicad_base_dir):
+            # Look inside version subdirectories (e.g., "8.0", "7.0")
+            for version_dir in os.listdir(kicad_base_dir):
+                potential_path = os.path.join(kicad_base_dir, version_dir, "bin", cli_executable_name)
+                search_paths.append(potential_path)
+
+    elif sys.platform.startswith("linux"): # Linux
+        # Most package manager installs will be in the PATH.
+        # This is a fallback for non-standard or manual installations.
+        search_paths.append(f"/usr/bin/{cli_executable_name}")
+        search_paths.append(f"/usr/local/bin/{cli_executable_name}")
+
+    # Check the potential paths for an existing, executable file
+    for path in search_paths:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+            
+    return None
 
 class HTLWienXFabricationExport(pcbnew.ActionPlugin):
     def defaults(self):
@@ -11,6 +63,7 @@ class HTLWienXFabricationExport(pcbnew.ActionPlugin):
         self.icon_file_name = os.path.join(os.path.dirname(__file__), 'HTLWienX_24x24.png')
 
     def Run(self):
+        kicad_cli_path = str(find_kicad_cli())
         board = pcbnew.GetBoard()
         board_path = board.GetFileName()
         board_directory = os.path.dirname(board_path)
@@ -19,17 +72,49 @@ class HTLWienXFabricationExport(pcbnew.ActionPlugin):
         if not os.path.exists(fabrication_directory):
             os.makedirs(fabrication_directory)
 
-        output_filename = os.path.join(fabrication_directory, os.path.splitext(os.path.basename(board_path))[0] + '-Bottom.svg')
+        output_filename = os.path.join(fabrication_directory, os.path.splitext(os.path.basename(board_path))[0])
 
         # Export B.Cu layer as SVG, black and white, the page as big as the board itself and not the drawing sheet (page size mode 2), exclude drawing sheet, negative, named {filename}-Bottom.svg, in a directory called /Fabrication/ located in the same directory as the board file
         # F.Cu is mirrored so the ink is closer to the copper
-        fCuExportCommand = "kicad-cli pcb export svg -o \""+output_filename+"-Top.svg\" --layers F.Cu --mirror -n --black-and-white --page-size-mode 2 --exclude-drawing-sheet "+board_path
-        bCuExportCommand = "kicad-cli pcb export svg -o \""+output_filename+"-Bottom.svg\" --layers B.Cu -n --black-and-white --page-size-mode 2 --exclude-drawing-sheet "+board_path
-        drillExportCommand = "kicad-cli pcb export drill -o "+fabrication_directory+" --drill-origin plot --excellon-zeros-format suppressleading -u in --excellon-min-header "+board_path
+        fCuExportCommand = [
+            kicad_cli_path,
+            "pcb", "export", "svg",
+            "-o", f"{output_filename}-Top.svg",
+            "--layers", "F.Cu",
+            "--mirror",
+            "-n",
+            "--black-and-white",
+            "--page-size-mode", "2",
+            "--exclude-drawing-sheet",
+            board_path
+        ]
 
-        subprocess.run(bCuExportCommand)
-        subprocess.run(fCuExportCommand)
-        subprocess.run(drillExportCommand)
+        bCuExportCommand = [
+            kicad_cli_path,
+            "pcb", "export", "svg",
+            "-o", f"{output_filename}-Bottom.svg",
+            "--layers", "B.Cu",
+            "-n",
+            "--black-and-white",
+            "--page-size-mode", "2",
+            "--exclude-drawing-sheet",
+            board_path
+        ]
+
+        drillExportCommand = [
+            kicad_cli_path,
+            "pcb", "export", "drill",
+            "-o", fabrication_directory,
+            "--drill-origin", "plot",
+            "--excellon-zeros-format", "suppressleading",
+            "-u", "in",
+            "--excellon-min-header",
+            board_path
+        ]
+
+        subprocess.run(bCuExportCommand, check=True)
+        subprocess.run(fCuExportCommand, check=True)
+        subprocess.run(drillExportCommand, check=True)
 
         # Split DRL to EXC and Tool Info File
         drl_file = os.path.join(fabrication_directory, os.path.splitext(os.path.basename(board_path))[0] + '.drl')
